@@ -1,0 +1,311 @@
+---
+title: "Machine Learning Algorithms From Scratch Using R"
+author: Lance Wrobel
+output: html_document
+---
+
+In this R notebook, I implement some common machine learning algorithms and statistical models from scratch and without use of the R machine learning packages. This work was done for learning purposes. So far I implemented kmeans and multiple linear regession (exact solution and by using gradient descent).
+
+I will use the following libraries throughout this notebook. For purposes other than plotting, Base R is mostly used.
+```{r}
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+```
+
+The first algorithm I implement is the kmeans algorithm.
+```{r}
+init_random_centroids <- function(df, k){
+  
+      df_dim <- ncol(df)
+      df_numpoints <- nrow(df)
+      centroid_matrix <- matrix(nrow = k, ncol = df_dim) # initialize matrix
+      
+      dimension_bounds_matrix <- matrix(nrow = df_dim, ncol = 2) # min and max across each dimension of the data frame df
+      
+      for(i in 1:df_dim){
+        
+          dimension_bounds_matrix[i,1] <- min(df[,i])   
+          dimension_bounds_matrix[i,2] <- max(df[,i])   
+          
+      }
+      # generate random values between the min and max of each dimension of df
+      random_numbers <- function(x){runif(1, min=dimension_bounds_matrix[x,1], max=dimension_bounds_matrix[x,2])}
+         
+      generate_centroid_point <- function(x){sapply(1:df_dim, random_numbers)} 
+          
+      centroid_matrix <- as.matrix(t(sapply(1:k, generate_centroid_point))) # create k random sets of numbers between min and (max-1)
+      
+      
+      return(centroid_matrix)
+}
+
+assign_to_clusters <- function(df,k,centroid_matrix){
+      
+      df_dim <- ncol(df)
+      df_numpoints <- nrow(df)    
+  
+      cluster_ids <- vector(length = df_numpoints)
+      distances_vector <- vector(length = k) # this vector contains the distances between the current point and each cluster center 
+      
+      for(i in 1:df_numpoints){
+          
+          distances_to_point <- function(x){dist(rbind(df[i,], centroid_matrix[x,]))}
+          
+          distances_vector <-  sapply(1:k, distances_to_point)
+        
+          cluster_ids[i] <- which.min(distances_vector) # index of the vector with the smallest value
+      }
+      
+      return(cluster_ids)
+}
+update_centroids <- function(df,centroid_matrix,cluster_ids){
+  
+      df_dim <- ncol(df)
+      df_numpoints <- nrow(df)
+      
+      df_with_ids <- cbind(df,cluster_ids) # we want the cluster ids attached to the data frame
+
+      # each coordinate of the centroids is the mean of that coordinate value across the cluster  
+      updated_centroid_matrix <- df_with_ids %>% group_by(cluster_ids) %>% summarise_all(mean) %>% select(-cluster_ids)
+      
+      return(as.matrix(updated_centroid_matrix))
+}
+
+kmeans_clustering <- function(df, k, max_iter){
+      
+      df_dim <- ncol(df)
+      df_numpoints <- nrow(df)
+      
+      centroid_matrix <- init_random_centroids(df,k) # Chose k random centroids within domain of dataset to start
+      
+      cluster_ids <- assign_to_clusters(df,k,centroid_matrix) # initially assign each datapoint to nearest cluster center
+      
+      count_iter <- 0
+      while(count_iter < max_iter) {
+        
+        centroid_matrix <- update_centroids(df,centroid_matrix,cluster_ids) # update centroids to reflect new assignment of cluster ids
+        
+        cluster_ids <- assign_to_clusters(df,k,centroid_matrix) # assign points to new clusters
+        
+        count_iter <- count_iter + 1
+      }
+      
+      return(cbind(df,cluster_ids))
+}
+
+```
+
+Next I test the kmeans algorithm using the built-in iris dataset.
+```{r}
+clustered_data<- kmeans_clustering(iris[,2:3],3,20)
+```
+
+Then I visualize the results of kmeans to get a sense of how well it works.
+```{r}
+
+clustered_data$cluster_ids <- as.factor(clustered_data$cluster_ids) # needs to be a factor so ggplot works
+
+ggplot(data=clustered_data, aes(x=Sepal.Width, y=Petal.Length,  color=cluster_ids))+geom_point()
+```
+
+Below I implement multiple linear regression from scratch. The formula I used for the beta coefficients can be shown with calculus to be the optimal solution to the problem of minimizing the sum of squared residuals.
+```{r}
+
+calculate_beta_vector<-function(train_x, train_y){
+  
+      beta_vector <- solve(t(train_x) %*% train_x) %*% t(train_x) %*% train_y # formula for optimal betas, can be found by calculus
+      
+      return(beta_vector)
+}
+
+predict_glr <- function(test_x, train_x, train_y){
+      
+      train_x <- as.matrix(train_x) # make the training and testing data matrices in order to do matrix multiplication
+      train_y <- as.matrix(train_y)
+      test_x <- as.matrix(test_x)
+      
+      num_points_train <- nrow(train_x)
+      num_points_test <- nrow(test_x)
+          
+      test_x <- cbind(rep(1,num_points_test),test_x) # bind vector of ones for intercept
+      train_x <- cbind(rep(1,num_points_train),train_x) # bind vector of ones for intercept
+  
+      beta_vector <- calculate_beta_vector(train_x, train_y) 
+      
+      predicted_y <- test_x %*% beta_vector
+      
+      return(list(predicted_y, beta_vector))
+}
+```
+
+
+To test my implementation, I use an NBA dataset of player statistics and I look at the relationship between minutes played by the player and the number of field goals the player made. I used these variables since this relationship is mostly linear.
+
+Below I test the multiple linear regression by plotting the actual field goal values and the predicted values on the same plot. 
+```{r}
+nba_data <- read.csv("NBA_Stats_Analysis.csv")
+
+nba_data_subset <- nba_data[,c("MP","Age","FG")]
+
+train <-  as.data.frame(na.omit(nba_data_subset[1:400,]))
+test <-  as.data.frame(na.omit(nba_data_subset[401:735,]))
+
+train_x <- train$MP
+test_x <- test$MP
+
+train_y <- train$FG
+test_y <- test$FG
+
+glr_results <- predict_glr(as.data.frame(test_x), as.data.frame(train_x), as.data.frame(train_y))
+
+predicted_y <- glr_results[[1]]
+
+n <- nrow(test)
+
+predicted <- test
+actual <- test
+
+actual$type <- rep("actual",n)
+predicted$type <- rep("predicted",n)
+
+predicted$FG <- predicted_y
+
+data_to_plot<- as.data.frame(rbind(actual,predicted))
+
+ggplot(data_to_plot, aes(MP,FG, color=type))+geom_point() + ggtitle("Exact Solution Regression: \nMinutes Played Vs. Field Goals Made (Normalized Variables)")
+
+```
+
+The r-squared for the regression model is calculated below.
+```{r}
+test_copy <- test
+
+test_copy$predicted_y <- predicted_y
+
+y_mean <- mean(test_copy$FG)
+
+ss_total <- sum((test_copy$FG - y_mean)^2)
+ss_res <- sum((predicted_y - test_copy$FG)^2)
+
+r_2 <- 1 - ss_res/ss_total
+
+cat("R^2: ", r_2)
+```
+
+I will next look at solving the multiple linear regression problem using a gradient descent approach.
+```{r}
+        
+update_betas <- function(beta_vector, predicted_y, train_y, train_x, alpha){
+        
+        num_points <- nrow(train_x)
+        num_var <- ncol(train_x)
+              
+        beta_vector[1] <- beta_vector[1] - alpha*(1/(num_points))*sum((predicted_y - train_y)) 
+        
+        temp <- function(x){(alpha*(1/(num_points))*sum((predicted_y - train_y)*x))}
+        
+        beta_vector[2:(num_var)] <- beta_vector[2:(num_var)] - sapply(as.data.frame(train_x[,2:(num_var)]), temp)
+
+        return(beta_vector)
+        }
+
+grad_descent_lr <- function(train_x, train_y, max_iter=300, alpha=0.01, error_threshold=0.1){
+      
+      num_points <- nrow(train_x)
+      num_var <- ncol(train_x)
+      
+      train_x <- as.matrix(cbind(rep(1,num_points),train_x)) # bind a column of ones to the training data to account for the intercept in regression
+      
+      beta_vector <- as.matrix(rnorm(num_var+1, mean=1, sd=0.5)) # num_var + 1 which includes y-int as first entry
+      
+      beta_matrix <- matrix(nrow = max_iter, ncol = (num_var+1)) # keep all previous beta vectors in a matrix to visualize convergence path after
+      
+      error_vector <- rep(0,max_iter)
+      num_iter <- 0
+      error_diff <- error_threshold + 0.001 # fix this later, error_diff should really start at zero
+      
+      sum_of_squared_error <- 0
+      while (num_iter < max_iter && error_diff > error_threshold){ 
+        
+        prev_sum_of_squared_error <- sum_of_squared_error 
+        
+        predicted_y <- t(beta_vector) %*% t(train_x)
+        
+        prev_beta_vector <- beta_vector # store beta vector before update to compute the error between the previous and updated beta vectors
+    
+        beta_vector <- update_betas(beta_vector, predicted_y, train_y, train_x, alpha) # update betas using formula found in algorithm
+        
+        sum_of_squared_error <- sum((predicted_y - train_y)^2) # sum of squared error, used to measure convergence of the algorithm
+        
+        # error diff is used as a measure of convergence, error_diff is very small once the algorithm converges
+        error_diff <- abs(prev_sum_of_squared_error - sum_of_squared_error)
+        
+        beta_matrix[num_iter+1,] <-  beta_vector 
+        error_vector[num_iter+1] <- sum_of_squared_error
+        
+        num_iter <- num_iter + 1
+      }
+      return(list(beta_vector, sum_of_squared_error,num_iter, beta_matrix, error_vector))
+}
+
+predict_gd_lr <- function(test_x, beta_vector){
+    
+        test_x <- as.matrix(test_x) # needed for matrix multiplication
+        
+        num_points <- nrow(test_x)
+          
+        test_x <- cbind(rep(1, num_points), test_x) # bind vector of ones for intercept
+        
+        predicted_y <- test_x %*% beta_vector
+        
+        return(predicted_y)
+}
+```
+
+Below I visually test the gradient descent approach to regression by using the same NBA data I used before.
+```{r}
+# normalize the NBA data first using the Z score method
+train_NormZ <- as.data.frame(scale(train)) 
+test_NormZ <- as.data.frame(scale(test))
+
+# run stochastic gradient descent, I needed to cast the normalized training data to data frames to avoid some issues
+gd_results <- sgd_lr(train_x=as.data.frame(train_NormZ$MP), train_y=as.data.frame(train_NormZ$FG), max_iter=300, alpha=0.01, error_threshold=0.001)
+
+beta_vector <- gd_results[[1]]
+
+test_x <- as.data.frame(test_NormZ$MP) # predictor matrix
+
+predicted_y <- predict_gd_lr(test_x, beta_vector)
+
+actual_normZ <- test_NormZ # make a copy of the normalized test data to put actual data (done for plotting with ggplot purposes)
+
+n <- nrow(actual_normZ)
+
+predicted_normZ <- actual_normZ
+
+actual_normZ$type <- rep("actual",n)
+predicted_normZ$type <- rep("predicted",n)
+
+predicted_normZ$FG <- predicted_y
+
+data_to_plot <- as.data.frame(rbind(actual_normZ, predicted_normZ))
+
+ggplot(data_to_plot, aes(MP,FG, color=type)) + geom_point() + ggtitle("Gradient Descent Regression: \nMinutes Played Vs. Field Goals Made (Normalized Variables)")
+
+```
+
+I will next visualize how the sum of squared error changed after each iteration when the learning rate alpha is set to 0.01.
+```{r}
+max_iter <- 300
+
+betas_df <- as.data.frame(sgd_results[[4]])
+sse_vector <- as.data.frame(sgd_results[[5]])
+
+betas_error_df <- as.data.frame(cbind(seq(max_iter),betas_df, sse_vector))
+
+colnames(betas_error_df) <- c("Iter_num","beta_0", "beta_1", "error")
+
+ggplot(betas_error_df, aes(x=Iter_num, y=error))+geom_point()+ggtitle("Iteration # Vs. SSE for Regression Using Gradient Descent with alpha=0.01") + ylab("Sum of Squared Error")
+```
+
