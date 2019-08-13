@@ -1,7 +1,9 @@
 ---
 title: "Machine Learning Algorithms From Scratch Using R"
-author: Lance Wrobel
-output: html_document
+author: "Lance Wrobel"
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 In this R notebook, I implement some common machine learning algorithms and statistical models from scratch and without use of the R machine learning packages. This work was done for learning purposes. So far I implemented kmeans and multiple linear regession (exact solution and by using gradient descent).
@@ -270,9 +272,9 @@ train_NormZ <- as.data.frame(scale(train))
 test_NormZ <- as.data.frame(scale(test))
 
 # run stochastic gradient descent, I needed to cast the normalized training data to data frames to avoid some issues
-gd_results <- sgd_lr(train_x=as.data.frame(train_NormZ$MP), train_y=as.data.frame(train_NormZ$FG), max_iter=300, alpha=0.01, error_threshold=0.001)
+grad_descent_results <- grad_descent_lr(train_x=as.data.frame(train_NormZ$MP), train_y=as.data.frame(train_NormZ$FG), max_iter=300, alpha=0.01, error_threshold=0.001)
 
-beta_vector <- gd_results[[1]]
+beta_vector <- grad_descent_results[[1]]
 
 test_x <- as.data.frame(test_NormZ$MP) # predictor matrix
 
@@ -299,8 +301,8 @@ I will next visualize how the sum of squared error changed after each iteration 
 ```{r}
 max_iter <- 300
 
-betas_df <- as.data.frame(sgd_results[[4]])
-sse_vector <- as.data.frame(sgd_results[[5]])
+betas_df <- as.data.frame(grad_descent_results[[4]])
+sse_vector <- as.data.frame(grad_descent_results[[5]])
 
 betas_error_df <- as.data.frame(cbind(seq(max_iter),betas_df, sse_vector))
 
